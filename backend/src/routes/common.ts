@@ -5,6 +5,37 @@ import ExcelJS from 'exceljs';
 
 const router = Router();
 
+function calculateWarningInfo(deadlineDate: string | null, status: string): {
+  remaining_days: number | null;
+  is_overdue: boolean;
+  overdue_days: number;
+  warning_status: 'normal' | 'expiring_soon' | 'overdue' | 'closed';
+} {
+  if (!deadlineDate) {
+    return { remaining_days: null, is_overdue: false, overdue_days: 0, warning_status: 'normal' };
+  }
+  
+  if (status === 'closed') {
+    return { remaining_days: null, is_overdue: false, overdue_days: 0, warning_status: 'closed' };
+  }
+  
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const deadline = new Date(deadlineDate);
+  deadline.setHours(0, 0, 0, 0);
+  
+  const diffTime = deadline.getTime() - today.getTime();
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  
+  if (diffDays < 0) {
+    return { remaining_days: diffDays, is_overdue: true, overdue_days: Math.abs(diffDays), warning_status: 'overdue' };
+  } else if (diffDays <= 3) {
+    return { remaining_days: diffDays, is_overdue: false, overdue_days: 0, warning_status: 'expiring_soon' };
+  } else {
+    return { remaining_days: diffDays, is_overdue: false, overdue_days: 0, warning_status: 'normal' };
+  }
+}
+
 router.use(authMiddleware);
 
 router.get('/projects/all', (req, res) => {
@@ -78,6 +109,11 @@ router.get('/groups/all', (req, res) => {
   res.json(list);
 });
 
+router.get('/deadline-rules/all', (req, res) => {
+  const list = db.prepare('SELECT * FROM rectification_deadline_rules').all();
+  res.json(list);
+});
+
 router.get('/hazards/virtual', (req, res) => {
   const { 
     page = 1, 
@@ -126,7 +162,7 @@ router.get('/hazards/virtual', (req, res) => {
   }
   
   const total = db.prepare(`SELECT COUNT(*) as count FROM hazard_records h LEFT JOIN hazard_types ht ON h.hazard_type_id = ht.id ${where}`).get(...params) as { count: number };
-  const list = db.prepare(`
+  let list: any[] = db.prepare(`
     SELECT h.*, 
            p.name as project_name, 
            f.name as floor_name, 
@@ -148,6 +184,11 @@ router.get('/hazards/virtual', (req, res) => {
     ORDER BY h.id DESC
     LIMIT ? OFFSET ?
   `).all(...params, Number(pageSize), offset);
+  
+  list = list.map(item => {
+    const warningInfo = calculateWarningInfo(item.deadline_date, item.status);
+    return { ...item, ...warningInfo };
+  });
   
   res.json({ list, total: total.count, page: Number(page), pageSize: Number(pageSize) });
 });
@@ -195,7 +236,7 @@ router.get('/hazards/export', async (req, res) => {
     params.push(`%${keyword}%`, `%${keyword}%`);
   }
   
-  const list = db.prepare(`
+  let list: any[] = db.prepare(`
     SELECT h.*, 
            p.name as project_name, 
            f.name as floor_name, 
@@ -214,6 +255,11 @@ router.get('/hazards/export', async (req, res) => {
     ORDER BY h.id DESC
   `).all(...params) as any[];
   
+  list = list.map(item => {
+    const warningInfo = calculateWarningInfo(item.deadline_date, item.status);
+    return { ...item, ...warningInfo };
+  });
+  
   const workbook = new ExcelJS.Workbook();
   const worksheet = workbook.addWorksheet('隐患记录');
   
@@ -226,6 +272,10 @@ router.get('/hazards/export', async (req, res) => {
     { header: '责任小组', key: 'group_name', width: 15 },
     { header: '隐患描述', key: 'description', width: 40 },
     { header: '状态', key: 'status', width: 12 },
+    { header: '整改截止时间', key: 'deadline_date', width: 15 },
+    { header: '预警状态', key: 'warning_status_text', width: 12 },
+    { header: '剩余天数', key: 'remaining_days', width: 10 },
+    { header: '超期天数', key: 'overdue_days', width: 10 },
     { header: '执行人', key: 'executor_name', width: 12 },
     { header: '整改说明', key: 'rectification_desc', width: 40 },
     { header: '创建时间', key: 'created_at', width: 20 },
@@ -239,10 +289,20 @@ router.get('/hazards/export', async (req, res) => {
     closed: '已关闭',
   };
   
+  const warningStatusMap: Record<string, string> = {
+    normal: '正常',
+    expiring_soon: '即将到期',
+    overdue: '已超期',
+    closed: '已结束',
+  };
+  
   list.forEach((item: any) => {
     worksheet.addRow({
       ...item,
       status: statusMap[item.status] || item.status,
+      warning_status_text: warningStatusMap[item.warning_status] || '-',
+      remaining_days: item.remaining_days ?? '-',
+      overdue_days: item.overdue_days || '-',
     });
   });
   

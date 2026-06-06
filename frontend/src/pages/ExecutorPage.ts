@@ -1,6 +1,6 @@
 import { executorApi, commonApi } from '../services/api';
-import { User, HazardRecord, FilterParams } from '../types';
-import { showToast, getStatusText, getStatusClass, formatDate, downloadBlob } from '../utils';
+import { User, HazardRecord, FilterParams, RectificationDeadlineRule } from '../types';
+import { showToast, getStatusText, getStatusClass, formatDate, downloadBlob, getWarningDisplayText, getWarningStatusText, getWarningStatusClass } from '../utils';
 import { VirtualList } from '../components/VirtualList';
 import { createHazardCascade, createHazardTypeCascade, CascadeDropdown } from '../components/CascadeDropdown';
 
@@ -11,6 +11,7 @@ export class ExecutorPage {
   private locationCascade!: CascadeDropdown;
   private hazardTypeCascade!: CascadeDropdown;
   private filterParams: FilterParams = {};
+  private deadlineRules: RectificationDeadlineRule[] = [];
 
   constructor(container: HTMLElement) {
     this.container = container;
@@ -102,6 +103,12 @@ export class ExecutorPage {
       groupSelect.appendChild(opt);
     });
 
+    try {
+      this.deadlineRules = await commonApi.getAllDeadlineRules();
+    } catch (e) {
+      console.error('加载整改时限规则失败', e);
+    }
+
     this.virtualList = new VirtualList(
       this.container.querySelector('#virtualListContainer')!,
       {
@@ -181,6 +188,11 @@ export class ExecutorPage {
               <div class="row"><span class="label">隐患类型：</span><span class="value">${item.hazard_type_name || '-'}</span></div>
               <div class="row"><span class="label">责任小组：</span><span class="value">${item.group_name || '-'}</span></div>
               <div class="row"><span class="label">状态：</span><span class="value"><span class="${getStatusClass(item.status)}">${getStatusText(item.status)}</span></span></div>
+              <div class="row"><span class="label">整改截止时间：</span><span class="value">${item.deadline_date || '-'}</span></div>
+              <div class="row"><span class="label">预警状态：</span><span class="value"><span class="${getWarningStatusClass(item.warning_status)}">${getWarningStatusText(item.warning_status)}</span></span></div>
+              ${item.status !== 'closed' && item.deadline_date ? `
+                <div class="row"><span class="label">时限信息：</span><span class="value">${getWarningDisplayText(item)}</span></div>
+              ` : ''}
               <div class="row"><span class="label">创建时间：</span><span class="value">${formatDate(item.created_at)}</span></div>
               <div class="row"><span class="label">执行人：</span><span class="value">${item.executor_name || '-'}</span></div>
               <div class="row" style="margin-top: 12px;"><span class="label">隐患描述：</span></div>
@@ -274,6 +286,10 @@ export class ExecutorPage {
     const projects = await commonApi.getAllProjects();
     const groups = await commonApi.getAllGroups();
     const hazardTypes = await commonApi.getAllHazardTypes(null);
+    
+    const today = new Date();
+    const defaultDeadline = new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000);
+    const defaultDeadlineStr = defaultDeadline.toISOString().slice(0, 10);
 
     container.innerHTML = `
       <div class="modal-mask">
@@ -321,6 +337,15 @@ export class ExecutorPage {
                   <option value="">请选择</option>
                   ${groups.map(g => `<option value="${g.id}">${g.name}</option>`).join('')}
                 </select>
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-item">
+                <label>整改截止时间 *</label>
+                <input type="date" id="deadline_date" value="${defaultDeadlineStr}" />
+              </div>
+              <div class="form-item" style="display: flex; align-items: flex-end;">
+                <span style="font-size: 12px; color: #666; line-height: 32px;" id="defaultDaysHint">默认整改时限：7天</span>
               </div>
             </div>
             <div class="form-item">
@@ -386,6 +411,20 @@ export class ExecutorPage {
           opt.textContent = t.name;
           hazardTypeSelect.appendChild(opt);
         });
+        
+        const rule = this.deadlineRules.find(r => r.hazard_type_parent_id === parentId);
+        const defaultDays = rule ? rule.default_days : 7;
+        const hintEl = container.querySelector('#defaultDaysHint');
+        if (hintEl) {
+          hintEl.textContent = `默认整改时限：${defaultDays}天`;
+        }
+        
+        const deadlineInput = container.querySelector('#deadline_date') as HTMLInputElement;
+        if (deadlineInput) {
+          const newDeadline = new Date();
+          newDeadline.setDate(newDeadline.getDate() + defaultDays);
+          deadlineInput.value = newDeadline.toISOString().slice(0, 10);
+        }
       }
     });
 
@@ -401,8 +440,9 @@ export class ExecutorPage {
       const group_id = Number((container.querySelector('#group_id') as HTMLSelectElement).value);
       const description = (container.querySelector('#description') as HTMLTextAreaElement).value;
       const photos = (container.querySelector('#photos') as HTMLInputElement).value;
+      const deadline_date = (container.querySelector('#deadline_date') as HTMLInputElement).value;
 
-      if (!project_id || !floor_id || !area_id || !hazard_type_id || !group_id || !description.trim()) {
+      if (!project_id || !floor_id || !area_id || !hazard_type_id || !group_id || !description.trim() || !deadline_date) {
         showToast('请填写所有必填项', 'error');
         return;
       }
@@ -416,6 +456,7 @@ export class ExecutorPage {
           group_id,
           description: description.trim(),
           photos: photos.trim() || undefined,
+          deadline_date,
         });
         showToast('提交成功');
         container.innerHTML = '';

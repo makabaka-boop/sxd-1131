@@ -1,6 +1,6 @@
 import { supervisorApi, commonApi } from '../services/api';
 import { User, HazardRecord, FilterParams } from '../types';
-import { showToast, getStatusText, getStatusClass, formatDate, downloadBlob } from '../utils';
+import { showToast, getStatusText, getStatusClass, formatDate, downloadBlob, getWarningDisplayText, getWarningStatusText, getWarningStatusClass } from '../utils';
 import { VirtualList } from '../components/VirtualList';
 import { createHazardCascade, createHazardTypeCascade, CascadeDropdown } from '../components/CascadeDropdown';
 
@@ -53,6 +53,15 @@ export class SupervisorPage {
                 <option value="pending">待整改</option>
                 <option value="rectifying">待复核</option>
                 <option value="closed">已关闭</option>
+              </select>
+            </div>
+            <div class="filter-item">
+              <label>预警状态</label>
+              <select id="warningStatus">
+                <option value="">全部</option>
+                <option value="expiring_soon">即将到期</option>
+                <option value="overdue">已超期</option>
+                <option value="normal">正常</option>
               </select>
             </div>
             <div class="filter-item">
@@ -130,10 +139,12 @@ export class SupervisorPage {
       const status = (this.container.querySelector('#status') as HTMLSelectElement).value;
       const groupId = (this.container.querySelector('#groupId') as HTMLSelectElement).value;
       const keyword = (this.container.querySelector('#keyword') as HTMLInputElement).value;
+      const warningStatus = (this.container.querySelector('#warningStatus') as HTMLSelectElement).value;
       
       this.filterParams.status = status || undefined;
       this.filterParams.groupId = groupId ? Number(groupId) : undefined;
       this.filterParams.keyword = keyword || undefined;
+      this.filterParams.warningStatus = warningStatus || undefined;
       
       this.virtualList.refresh();
     });
@@ -143,6 +154,7 @@ export class SupervisorPage {
       (this.container.querySelector('#status') as HTMLSelectElement).value = '';
       (this.container.querySelector('#groupId') as HTMLSelectElement).value = '';
       (this.container.querySelector('#keyword') as HTMLInputElement).value = '';
+      (this.container.querySelector('#warningStatus') as HTMLSelectElement).value = '';
       this.locationCascade.clear();
       this.hazardTypeCascade.clear();
       this.virtualList.refresh();
@@ -174,6 +186,11 @@ export class SupervisorPage {
               <div class="row"><span class="label">隐患类型：</span><span class="value">${item.hazard_type_name || '-'}</span></div>
               <div class="row"><span class="label">责任小组：</span><span class="value">${item.group_name || '-'}</span></div>
               <div class="row"><span class="label">状态：</span><span class="value"><span class="${getStatusClass(item.status)}">${getStatusText(item.status)}</span></span></div>
+              <div class="row"><span class="label">整改截止时间：</span><span class="value">${item.deadline_date || '-'}</span></div>
+              <div class="row"><span class="label">预警状态：</span><span class="value"><span class="${getWarningStatusClass(item.warning_status)}">${getWarningStatusText(item.warning_status)}</span></span></div>
+              ${item.status !== 'closed' && item.deadline_date ? `
+                <div class="row"><span class="label">时限信息：</span><span class="value">${getWarningDisplayText(item)}</span></div>
+              ` : ''}
               <div class="row"><span class="label">创建时间：</span><span class="value">${formatDate(item.created_at)}</span></div>
               <div class="row"><span class="label">执行人：</span><span class="value">${item.executor_name || '-'}</span></div>
               <div class="row" style="margin-top: 12px;"><span class="label">隐患描述：</span></div>

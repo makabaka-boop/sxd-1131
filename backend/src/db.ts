@@ -77,6 +77,7 @@ function initDatabase() {
       rectification_desc TEXT,
       rectification_photos TEXT,
       review_comment TEXT,
+      deadline_date TEXT,
       created_at TEXT DEFAULT (datetime('now', 'localtime')),
       rectified_at TEXT,
       closed_at TEXT,
@@ -89,6 +90,16 @@ function initDatabase() {
       FOREIGN KEY (supervisor_id) REFERENCES users(id)
     );
 
+    CREATE TABLE IF NOT EXISTS rectification_deadline_rules (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      hazard_type_parent_id INTEGER NOT NULL,
+      default_days INTEGER NOT NULL DEFAULT 7,
+      created_at TEXT DEFAULT (datetime('now', 'localtime')),
+      updated_at TEXT DEFAULT (datetime('now', 'localtime')),
+      FOREIGN KEY (hazard_type_parent_id) REFERENCES hazard_types(id) ON DELETE CASCADE,
+      UNIQUE(hazard_type_parent_id)
+    );
+
     CREATE INDEX IF NOT EXISTS idx_hazard_project ON hazard_records(project_id);
     CREATE INDEX IF NOT EXISTS idx_hazard_floor ON hazard_records(floor_id);
     CREATE INDEX IF NOT EXISTS idx_hazard_area ON hazard_records(area_id);
@@ -96,6 +107,12 @@ function initDatabase() {
     CREATE INDEX IF NOT EXISTS idx_hazard_group ON hazard_records(group_id);
     CREATE INDEX IF NOT EXISTS idx_hazard_status ON hazard_records(status);
   `);
+
+  const columns = db.prepare("PRAGMA table_info(hazard_records)").all() as any[];
+  const hasDeadlineDate = columns.some(c => c.name === 'deadline_date');
+  if (!hasDeadlineDate) {
+    db.exec("ALTER TABLE hazard_records ADD COLUMN deadline_date TEXT");
+  }
 
   const userCount = db.prepare('SELECT COUNT(*) as count FROM users').get() as { count: number };
   if (userCount.count === 0) {
@@ -174,8 +191,8 @@ function initDatabase() {
 
     const insertHazard = db.prepare(`
       INSERT INTO hazard_records 
-      (project_id, floor_id, area_id, hazard_type_id, group_id, description, status, executor_id)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      (project_id, floor_id, area_id, hazard_type_id, group_id, description, status, executor_id, deadline_date)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     const statuses = ['pending', 'rectifying', 'closed'];
     for (let i = 1; i <= 200; i++) {
@@ -185,6 +202,10 @@ function initDatabase() {
       const hazardTypeId = (i % 20) + 6;
       const groupId = (i % 8) + 1;
       const status = statuses[i % 3];
+      const daysToAdd = 5 + (i % 10);
+      const deadlineDate = new Date();
+      deadlineDate.setDate(deadlineDate.getDate() + daysToAdd);
+      const deadlineStr = deadlineDate.toISOString().slice(0, 10);
       insertHazard.run(
         projectId,
         floorId,
@@ -193,9 +214,26 @@ function initDatabase() {
         groupId,
         `隐患记录 ${i}：现场发现安全隐患，需要及时整改。详情请查看现场照片。`,
         status,
-        (i % 2) + 2
+        (i % 2) + 2,
+        deadlineStr
       );
     }
+
+    const insertDeadlineRule = db.prepare(`
+      INSERT OR IGNORE INTO rectification_deadline_rules 
+      (hazard_type_parent_id, default_days)
+      VALUES (?, ?)
+    `);
+    const defaultRules = [
+      [1, 7],
+      [2, 5],
+      [3, 10],
+      [4, 3],
+      [5, 7],
+    ];
+    defaultRules.forEach(([parentId, days]) => {
+      insertDeadlineRule.run(parentId, days);
+    });
   }
 }
 

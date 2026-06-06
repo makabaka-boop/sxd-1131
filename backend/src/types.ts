@@ -59,9 +59,18 @@ export interface HazardRecord {
   rectification_desc: string | null;
   rectification_photos: string | null;
   review_comment: string | null;
+  deadline_date: string | null;
   created_at: string;
   rectified_at: string | null;
   closed_at: string | null;
+}
+
+export interface RectificationDeadlineRule {
+  id: number;
+  hazard_type_parent_id: number;
+  default_days: number;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface JwtPayload {

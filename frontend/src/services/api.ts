@@ -1,4 +1,4 @@
-import { User, Project, Floor, Area, HazardType, ResponsibilityGroup, HazardRecord, PageResult, FilterParams } from '../types';
+import { User, Project, Floor, Area, HazardType, ResponsibilityGroup, HazardRecord, PageResult, FilterParams, RectificationDeadlineRule } from '../types';
 
 const BASE_URL = '/api';
 
@@ -92,6 +92,15 @@ export const adminApi = {
     request<{ success: boolean }>(`/admin/groups/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteGroup: (id: number) =>
     request<{ success: boolean }>(`/admin/groups/${id}`, { method: 'DELETE' }),
+
+  getDeadlineRules: () =>
+    request<{ list: RectificationDeadlineRule[] }>('/admin/deadline-rules'),
+  createDeadlineRule: (data: Partial<RectificationDeadlineRule>) =>
+    request<RectificationDeadlineRule>('/admin/deadline-rules', { method: 'POST', body: JSON.stringify(data) }),
+  updateDeadlineRule: (id: number, data: Partial<RectificationDeadlineRule>) =>
+    request<{ success: boolean }>(`/admin/deadline-rules/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteDeadlineRule: (id: number) =>
+    request<{ success: boolean }>(`/admin/deadline-rules/${id}`, { method: 'DELETE' }),
 };
 
 export const executorApi = {
@@ -138,6 +147,8 @@ export const commonApi = {
     request<HazardType[]>(`/common/hazard-types/all?parentId=${parentId === null || parentId === undefined ? 'null' : parentId}&keyword=${encodeURIComponent(keyword)}`),
   getAllGroups: (keyword = '') =>
     request<ResponsibilityGroup[]>(`/common/groups/all?keyword=${encodeURIComponent(keyword)}`),
+  getAllDeadlineRules: () =>
+    request<RectificationDeadlineRule[]>('/common/deadline-rules/all'),
   
   getVirtualHazards: (params: FilterParams & { page?: number; pageSize?: number }) => {
     const query = new URLSearchParams();

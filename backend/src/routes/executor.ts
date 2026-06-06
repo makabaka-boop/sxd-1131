@@ -5,11 +5,42 @@ import ExcelJS from 'exceljs';
 
 const router = Router();
 
+function calculateWarningInfo(deadlineDate: string | null, status: string): {
+  remaining_days: number | null;
+  is_overdue: boolean;
+  overdue_days: number;
+  warning_status: 'normal' | 'expiring_soon' | 'overdue' | 'closed';
+} {
+  if (!deadlineDate) {
+    return { remaining_days: null, is_overdue: false, overdue_days: 0, warning_status: 'normal' };
+  }
+  
+  if (status === 'closed') {
+    return { remaining_days: null, is_overdue: false, overdue_days: 0, warning_status: 'closed' };
+  }
+  
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const deadline = new Date(deadlineDate);
+  deadline.setHours(0, 0, 0, 0);
+  
+  const diffTime = deadline.getTime() - today.getTime();
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  
+  if (diffDays < 0) {
+    return { remaining_days: diffDays, is_overdue: true, overdue_days: Math.abs(diffDays), warning_status: 'overdue' };
+  } else if (diffDays <= 3) {
+    return { remaining_days: diffDays, is_overdue: false, overdue_days: 0, warning_status: 'expiring_soon' };
+  } else {
+    return { remaining_days: diffDays, is_overdue: false, overdue_days: 0, warning_status: 'normal' };
+  }
+}
+
 router.use(authMiddleware, roleMiddleware(['executor', 'admin']));
 
 router.get('/hazards', (req, res) => {
   const user = (req as any).user;
-  const { page = 1, pageSize = 20, status, projectId, floorId, areaId, hazardTypeId, groupId, keyword = '' } = req.query;
+  const { page = 1, pageSize = 20, status, projectId, floorId, areaId, hazardTypeId, groupId, keyword = '', warningStatus } = req.query;
   const offset = (Number(page) - 1) * Number(pageSize);
   
   let where = 'WHERE h.executor_id = ?';
@@ -45,7 +76,7 @@ router.get('/hazards', (req, res) => {
   }
   
   const total = db.prepare(`SELECT COUNT(*) as count FROM hazard_records h ${where}`).get(...params) as { count: number };
-  const list = db.prepare(`
+  let list: any[] = db.prepare(`
     SELECT h.*, 
            p.name as project_name, 
            f.name as floor_name, 
@@ -65,12 +96,21 @@ router.get('/hazards', (req, res) => {
     LIMIT ? OFFSET ?
   `).all(...params, Number(pageSize), offset);
   
+  list = list.map(item => {
+    const warningInfo = calculateWarningInfo(item.deadline_date, item.status);
+    return { ...item, ...warningInfo };
+  });
+  
+  if (warningStatus) {
+    list = list.filter(item => item.warning_status === warningStatus);
+  }
+  
   res.json({ list, total: total.count, page: Number(page), pageSize: Number(pageSize) });
 });
 
 router.post('/hazards', (req, res) => {
   const user = (req as any).user;
-  const { project_id, floor_id, area_id, hazard_type_id, group_id, description, photos } = req.body;
+  const { project_id, floor_id, area_id, hazard_type_id, group_id, description, photos, deadline_date } = req.body;
   
   if (!project_id || !floor_id || !area_id || !hazard_type_id || !group_id || !description) {
     return res.status(400).json({ error: '必填项不能为空' });
@@ -78,9 +118,9 @@ router.post('/hazards', (req, res) => {
   
   const result = db.prepare(`
     INSERT INTO hazard_records 
-    (project_id, floor_id, area_id, hazard_type_id, group_id, description, photos, executor_id, status)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending')
-  `).run(project_id, floor_id, area_id, hazard_type_id, group_id, description, photos || '', user.userId);
+    (project_id, floor_id, area_id, hazard_type_id, group_id, description, photos, executor_id, status, deadline_date)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)
+  `).run(project_id, floor_id, area_id, hazard_type_id, group_id, description, photos || '', user.userId, deadline_date || null);
   
   res.json({ id: result.lastInsertRowid });
 });
@@ -153,7 +193,7 @@ router.get('/hazards/export', async (req, res) => {
     params.push(`%${keyword}%`, `%${keyword}%`);
   }
   
-  const list = db.prepare(`
+  let list: any[] = db.prepare(`
     SELECT h.*, 
            p.name as project_name, 
            f.name as floor_name, 
@@ -172,6 +212,11 @@ router.get('/hazards/export', async (req, res) => {
     ORDER BY h.id DESC
   `).all(...params) as any[];
   
+  list = list.map(item => {
+    const warningInfo = calculateWarningInfo(item.deadline_date, item.status);
+    return { ...item, ...warningInfo };
+  });
+  
   const workbook = new ExcelJS.Workbook();
   const worksheet = workbook.addWorksheet('隐患记录');
   
@@ -184,6 +229,10 @@ router.get('/hazards/export', async (req, res) => {
     { header: '责任小组', key: 'group_name', width: 15 },
     { header: '隐患描述', key: 'description', width: 40 },
     { header: '状态', key: 'status', width: 12 },
+    { header: '整改截止时间', key: 'deadline_date', width: 15 },
+    { header: '预警状态', key: 'warning_status_text', width: 12 },
+    { header: '剩余天数', key: 'remaining_days', width: 10 },
+    { header: '超期天数', key: 'overdue_days', width: 10 },
     { header: '执行人', key: 'executor_name', width: 12 },
     { header: '整改说明', key: 'rectification_desc', width: 40 },
     { header: '创建时间', key: 'created_at', width: 20 },
@@ -197,10 +246,20 @@ router.get('/hazards/export', async (req, res) => {
     closed: '已关闭',
   };
   
+  const warningStatusMap: Record<string, string> = {
+    normal: '正常',
+    expiring_soon: '即将到期',
+    overdue: '已超期',
+    closed: '已结束',
+  };
+  
   list.forEach((item: any) => {
     worksheet.addRow({
       ...item,
       status: statusMap[item.status] || item.status,
+      warning_status_text: warningStatusMap[item.warning_status] || '-',
+      remaining_days: item.remaining_days ?? '-',
+      overdue_days: item.overdue_days || '-',
     });
   });
   

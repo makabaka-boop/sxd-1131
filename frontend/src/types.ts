@@ -59,6 +59,7 @@ export interface HazardRecord {
   rectification_desc: string | null;
   rectification_photos: string | null;
   review_comment: string | null;
+  deadline_date: string | null;
   created_at: string;
   rectified_at: string | null;
   closed_at: string | null;
@@ -70,6 +71,19 @@ export interface HazardRecord {
   group_name?: string;
   executor_name?: string;
   supervisor_name?: string;
+  remaining_days?: number | null;
+  is_overdue?: boolean;
+  overdue_days?: number;
+  warning_status?: 'normal' | 'expiring_soon' | 'overdue' | 'closed';
+}
+
+export interface RectificationDeadlineRule {
+  id: number;
+  hazard_type_parent_id: number;
+  default_days: number;
+  created_at: string;
+  updated_at: string;
+  hazard_type_name?: string;
 }
 
 export interface PageResult<T> {
@@ -87,4 +101,5 @@ export interface FilterParams {
   groupId?: number;
   status?: string;
   keyword?: string;
+  warningStatus?: string;
 }

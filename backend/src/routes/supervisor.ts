@@ -4,10 +4,41 @@ import { authMiddleware, roleMiddleware } from '../middleware/auth';
 
 const router = Router();
 
+function calculateWarningInfo(deadlineDate: string | null, status: string): {
+  remaining_days: number | null;
+  is_overdue: boolean;
+  overdue_days: number;
+  warning_status: 'normal' | 'expiring_soon' | 'overdue' | 'closed';
+} {
+  if (!deadlineDate) {
+    return { remaining_days: null, is_overdue: false, overdue_days: 0, warning_status: 'normal' };
+  }
+  
+  if (status === 'closed') {
+    return { remaining_days: null, is_overdue: false, overdue_days: 0, warning_status: 'closed' };
+  }
+  
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const deadline = new Date(deadlineDate);
+  deadline.setHours(0, 0, 0, 0);
+  
+  const diffTime = deadline.getTime() - today.getTime();
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  
+  if (diffDays < 0) {
+    return { remaining_days: diffDays, is_overdue: true, overdue_days: Math.abs(diffDays), warning_status: 'overdue' };
+  } else if (diffDays <= 3) {
+    return { remaining_days: diffDays, is_overdue: false, overdue_days: 0, warning_status: 'expiring_soon' };
+  } else {
+    return { remaining_days: diffDays, is_overdue: false, overdue_days: 0, warning_status: 'normal' };
+  }
+}
+
 router.use(authMiddleware, roleMiddleware(['supervisor', 'admin']));
 
 router.get('/hazards', (req, res) => {
-  const { page = 1, pageSize = 20, status, projectId, floorId, areaId, hazardTypeId, groupId, keyword = '' } = req.query;
+  const { page = 1, pageSize = 20, status, projectId, floorId, areaId, hazardTypeId, groupId, keyword = '', warningStatus } = req.query;
   const offset = (Number(page) - 1) * Number(pageSize);
   
   let where = 'WHERE 1=1';
@@ -43,7 +74,7 @@ router.get('/hazards', (req, res) => {
   }
   
   const total = db.prepare(`SELECT COUNT(*) as count FROM hazard_records h ${where}`).get(...params) as { count: number };
-  const list = db.prepare(`
+  let list: any[] = db.prepare(`
     SELECT h.*, 
            p.name as project_name, 
            f.name as floor_name, 
@@ -64,6 +95,15 @@ router.get('/hazards', (req, res) => {
     ORDER BY h.id DESC
     LIMIT ? OFFSET ?
   `).all(...params, Number(pageSize), offset);
+  
+  list = list.map(item => {
+    const warningInfo = calculateWarningInfo(item.deadline_date, item.status);
+    return { ...item, ...warningInfo };
+  });
+  
+  if (warningStatus) {
+    list = list.filter(item => item.warning_status === warningStatus);
+  }
   
   res.json({ list, total: total.count, page: Number(page), pageSize: Number(pageSize) });
 });

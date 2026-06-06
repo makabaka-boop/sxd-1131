@@ -1,5 +1,5 @@
 import { HazardRecord } from '../types';
-import { getStatusText, getStatusClass, formatDate } from '../utils';
+import { getStatusText, getStatusClass, formatDate, getWarningDisplayText, getWarningStatusClass } from '../utils';
 
 interface VirtualListOptions {
   itemHeight: number;
@@ -160,7 +160,21 @@ export class VirtualList {
     
     const title = document.createElement('div');
     title.className = 'list-item-title';
-    title.textContent = `#${item.id} ${item.hazard_type_parent_name || ''} ${item.hazard_type_name || ''}`;
+    title.style.display = 'flex';
+    title.style.justifyContent = 'space-between';
+    title.style.alignItems = 'center';
+    
+    const titleLeft = document.createElement('span');
+    titleLeft.textContent = `#${item.id} ${item.hazard_type_parent_name || ''} ${item.hazard_type_name || ''}`;
+    
+    const warningTag = document.createElement('span');
+    warningTag.className = getWarningStatusClass(item.warning_status);
+    warningTag.textContent = getWarningDisplayText(item);
+    warningTag.style.marginLeft = '8px';
+    warningTag.style.flexShrink = '0';
+    
+    title.appendChild(titleLeft);
+    title.appendChild(warningTag);
     
     const meta = document.createElement('div');
     meta.className = 'list-item-meta';

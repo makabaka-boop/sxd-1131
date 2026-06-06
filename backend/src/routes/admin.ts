@@ -221,4 +221,48 @@ router.delete('/groups/:id', (req, res) => {
   res.json({ success: true });
 });
 
+router.get('/deadline-rules', (req, res) => {
+  const list = db.prepare(`
+    SELECT r.*, ht.name as hazard_type_name 
+    FROM rectification_deadline_rules r
+    LEFT JOIN hazard_types ht ON r.hazard_type_parent_id = ht.id
+    ORDER BY r.id
+  `).all();
+  res.json({ list });
+});
+
+router.post('/deadline-rules', (req, res) => {
+  const { hazard_type_parent_id, default_days } = req.body;
+  if (!hazard_type_parent_id || !default_days) {
+    return res.status(400).json({ error: '隐患分类和默认天数不能为空' });
+  }
+  try {
+    const result = db.prepare(`
+      INSERT INTO rectification_deadline_rules (hazard_type_parent_id, default_days)
+      VALUES (?, ?)
+    `).run(hazard_type_parent_id, default_days);
+    res.json({ id: result.lastInsertRowid, hazard_type_parent_id, default_days });
+  } catch (err: any) {
+    res.status(400).json({ error: '该隐患分类的规则已存在' });
+  }
+});
+
+router.put('/deadline-rules/:id', (req, res) => {
+  const { default_days } = req.body;
+  if (!default_days) {
+    return res.status(400).json({ error: '默认天数不能为空' });
+  }
+  db.prepare(`
+    UPDATE rectification_deadline_rules 
+    SET default_days = ?, updated_at = datetime('now', 'localtime')
+    WHERE id = ?
+  `).run(default_days, req.params.id);
+  res.json({ success: true });
+});
+
+router.delete('/deadline-rules/:id', (req, res) => {
+  db.prepare('DELETE FROM rectification_deadline_rules WHERE id = ?').run(req.params.id);
+  res.json({ success: true });
+});
+
 export default router;

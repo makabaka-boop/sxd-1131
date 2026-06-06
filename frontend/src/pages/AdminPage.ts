@@ -1,5 +1,5 @@
 import { adminApi, commonApi } from '../services/api';
-import { Project, Floor, Area, HazardType, ResponsibilityGroup, User } from '../types';
+import { Project, Floor, Area, HazardType, ResponsibilityGroup, User, RectificationDeadlineRule } from '../types';
 import { showToast, formatDate } from '../utils';
 
 export class AdminPage {
@@ -32,6 +32,7 @@ export class AdminPage {
           <div class="tab-item" data-tab="areas">区域管理</div>
           <div class="tab-item" data-tab="hazardTypes">隐患字典</div>
           <div class="tab-item" data-tab="groups">责任小组</div>
+          <div class="tab-item" data-tab="deadlineRules">整改时限规则</div>
         </div>
         <div class="card">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
@@ -108,9 +109,16 @@ export class AdminPage {
         case 'groups':
           result = await adminApi.getGroups(this.currentPage, this.pageSize, keyword);
           break;
+        case 'deadlineRules':
+          result = await adminApi.getDeadlineRules();
+          break;
       }
       this.renderTable(result.list);
-      this.renderPagination(result.total, result.page, result.pageSize);
+      if (this.activeTab !== 'deadlineRules') {
+        this.renderPagination(result.total, result.page, result.pageSize);
+      } else {
+        this.renderPagination(result.list.length, 1, result.list.length);
+      }
     } catch (err: any) {
       showToast(err.message || '加载失败', 'error');
     }
@@ -130,6 +138,7 @@ export class AdminPage {
       areas: ['ID', '项目', '楼层', '区域名称', '区域编码', '创建时间', '操作'],
       hazardTypes: ['ID', '上级分类', '名称', '编码', '创建时间', '操作'],
       groups: ['ID', '小组名称', '组长', '联系电话', '创建时间', '操作'],
+      deadlineRules: ['ID', '隐患一级分类', '默认整改天数', '更新时间', '操作'],
     };
 
     const headerRow = headers[this.activeTab];
@@ -187,6 +196,14 @@ export class AdminPage {
             <td>${formatDate(item.created_at)}</td>
           `;
           break;
+        case 'deadlineRules':
+          html += `
+            <td>${item.id}</td>
+            <td>${item.hazard_type_name || '-'}</td>
+            <td>${item.default_days} 天</td>
+            <td>${formatDate(item.updated_at)}</td>
+          `;
+          break;
       }
       html += `
         <td>
@@ -227,6 +244,9 @@ export class AdminPage {
                 break;
               case 'groups':
                 await adminApi.deleteGroup(id);
+                break;
+              case 'deadlineRules':
+                await adminApi.deleteDeadlineRule(id);
                 break;
             }
             showToast('删除成功');
@@ -287,6 +307,7 @@ export class AdminPage {
       areas: isEdit ? '编辑区域' : '新增区域',
       hazardTypes: isEdit ? '编辑隐患类型' : '新增隐患类型',
       groups: isEdit ? '编辑责任小组' : '新增责任小组',
+      deadlineRules: isEdit ? '编辑整改时限规则' : '新增整改时限规则',
     };
 
     let formHtml = '';
@@ -387,6 +408,22 @@ export class AdminPage {
           </div>
         `;
         break;
+      case 'deadlineRules':
+        const parentHazardTypes = await commonApi.getAllHazardTypes(null);
+        formHtml = `
+          <div class="form-item">
+            <label>隐患一级分类</label>
+            <select id="hazard_type_parent_id" ${isEdit ? 'disabled' : ''}>
+              <option value="">请选择</option>
+              ${parentHazardTypes.map(h => `<option value="${h.id}" ${item?.hazard_type_parent_id === h.id ? 'selected' : ''}>${h.name}</option>`).join('')}
+            </select>
+          </div>
+          <div class="form-item">
+            <label>默认整改天数</label>
+            <input type="number" id="default_days" value="${item?.default_days || 7}" min="1" />
+          </div>
+        `;
+        break;
     }
 
     container.innerHTML = `
@@ -454,6 +491,9 @@ export class AdminPage {
             case 'groups':
               await adminApi.updateGroup(item.id, data);
               break;
+            case 'deadlineRules':
+              await adminApi.updateDeadlineRule(item.id, { default_days: Number(data.default_days) });
+              break;
           }
           showToast('更新成功');
         } else {
@@ -472,6 +512,12 @@ export class AdminPage {
               break;
             case 'groups':
               await adminApi.createGroup(data);
+              break;
+            case 'deadlineRules':
+              await adminApi.createDeadlineRule({
+                hazard_type_parent_id: Number(data.hazard_type_parent_id),
+                default_days: Number(data.default_days),
+              });
               break;
           }
           showToast('创建成功');
