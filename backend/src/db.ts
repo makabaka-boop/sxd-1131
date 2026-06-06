@@ -226,10 +226,10 @@ function initDatabase() {
     `);
     const defaultRules = [
       [1, 7],
-      [2, 5],
-      [3, 10],
-      [4, 3],
-      [5, 7],
+      [7, 5],
+      [13, 10],
+      [19, 3],
+      [25, 7],
     ];
     defaultRules.forEach(([parentId, days]) => {
       insertDeadlineRule.run(parentId, days);

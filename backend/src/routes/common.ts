@@ -201,7 +201,8 @@ router.get('/hazards/export', async (req, res) => {
     areaId, 
     hazardTypeId, 
     groupId, 
-    keyword = '' 
+    keyword = '',
+    warningStatus
   } = req.query;
   
   let where = 'WHERE 1=1';
@@ -259,6 +260,10 @@ router.get('/hazards/export', async (req, res) => {
     const warningInfo = calculateWarningInfo(item.deadline_date, item.status);
     return { ...item, ...warningInfo };
   });
+  
+  if (warningStatus) {
+    list = list.filter(item => item.warning_status === warningStatus);
+  }
   
   const workbook = new ExcelJS.Workbook();
   const worksheet = workbook.addWorksheet('隐患记录');

@@ -41,7 +41,6 @@ router.use(authMiddleware, roleMiddleware(['executor', 'admin']));
 router.get('/hazards', (req, res) => {
   const user = (req as any).user;
   const { page = 1, pageSize = 20, status, projectId, floorId, areaId, hazardTypeId, groupId, keyword = '', warningStatus } = req.query;
-  const offset = (Number(page) - 1) * Number(pageSize);
   
   let where = 'WHERE h.executor_id = ?';
   const params: any[] = [user.userId];
@@ -75,8 +74,7 @@ router.get('/hazards', (req, res) => {
     params.push(`%${keyword}%`);
   }
   
-  const total = db.prepare(`SELECT COUNT(*) as count FROM hazard_records h ${where}`).get(...params) as { count: number };
-  let list: any[] = db.prepare(`
+  let allList: any[] = db.prepare(`
     SELECT h.*, 
            p.name as project_name, 
            f.name as floor_name, 
@@ -93,19 +91,22 @@ router.get('/hazards', (req, res) => {
     LEFT JOIN users u ON h.executor_id = u.id
     ${where}
     ORDER BY h.id DESC
-    LIMIT ? OFFSET ?
-  `).all(...params, Number(pageSize), offset);
+  `).all(...params);
   
-  list = list.map(item => {
+  allList = allList.map(item => {
     const warningInfo = calculateWarningInfo(item.deadline_date, item.status);
     return { ...item, ...warningInfo };
   });
   
   if (warningStatus) {
-    list = list.filter(item => item.warning_status === warningStatus);
+    allList = allList.filter(item => item.warning_status === warningStatus);
   }
   
-  res.json({ list, total: total.count, page: Number(page), pageSize: Number(pageSize) });
+  const total = allList.length;
+  const offset = (Number(page) - 1) * Number(pageSize);
+  const list = allList.slice(offset, offset + Number(pageSize));
+  
+  res.json({ list, total, page: Number(page), pageSize: Number(pageSize) });
 });
 
 router.post('/hazards', (req, res) => {
@@ -158,7 +159,8 @@ router.get('/hazards/export', async (req, res) => {
     areaId, 
     hazardTypeId, 
     groupId, 
-    keyword = '' 
+    keyword = '',
+    warningStatus
   } = req.query;
   
   let where = 'WHERE h.executor_id = ?';
@@ -216,6 +218,10 @@ router.get('/hazards/export', async (req, res) => {
     const warningInfo = calculateWarningInfo(item.deadline_date, item.status);
     return { ...item, ...warningInfo };
   });
+  
+  if (warningStatus) {
+    list = list.filter(item => item.warning_status === warningStatus);
+  }
   
   const workbook = new ExcelJS.Workbook();
   const worksheet = workbook.addWorksheet('隐患记录');
