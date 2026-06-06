@@ -20,10 +20,11 @@ export class VirtualList {
   private total = 0;
   private visibleCount = 0;
   private startIndex = 0;
-  private bufferSize = 5;
+  private bufferSize = 10;
   private isLoading = false;
   private loadedPages = new Set<number>();
   private pageSize = 50;
+  private scrollTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(container: HTMLElement, options: VirtualListOptions) {
     this.container = container;
@@ -52,9 +53,8 @@ export class VirtualList {
     });
   }
 
-  private async onScroll() {
+  private onScroll() {
     const scrollTop = this.scrollContainer.scrollTop;
-    const totalHeight = this.total * this.options.itemHeight;
     const scrollHeight = this.scrollContainer.scrollHeight;
     const clientHeight = this.scrollContainer.clientHeight;
 
@@ -64,12 +64,21 @@ export class VirtualList {
       this.renderItems();
     }
 
+    const endIndex = newStartIndex + this.visibleCount;
+    const endPage = Math.ceil(endIndex / this.pageSize);
+    const maxPage = Math.ceil(this.total / this.pageSize);
+    
+    for (let page = 1; page <= Math.min(endPage + 1, maxPage); page++) {
+      if (!this.loadedPages.has(page) && !this.isLoading) {
+        this.loadPage(page);
+      }
+    }
+
     const scrollBottom = scrollTop + clientHeight;
-    if (scrollBottom >= scrollHeight - 100 && !this.isLoading) {
+    if (scrollBottom >= scrollHeight - 200 && !this.isLoading) {
       const nextPage = Math.ceil(this.data.length / this.pageSize) + 1;
-      const maxPage = Math.ceil(this.total / this.pageSize);
       if (nextPage <= maxPage && !this.loadedPages.has(nextPage)) {
-        await this.loadPage(nextPage);
+        this.loadPage(nextPage);
       }
     }
   }
@@ -100,35 +109,44 @@ export class VirtualList {
 
   private renderItems() {
     const endIndex = Math.min(this.startIndex + this.visibleCount, this.total);
-    const visibleData: HazardRecord[] = [];
-    
-    for (let i = this.startIndex; i < endIndex; i++) {
-      if (this.data[i]) {
-        visibleData.push(this.data[i]);
-      }
-    }
 
     this.content.style.transform = `translateY(${this.startIndex * this.options.itemHeight}px)`;
     this.content.innerHTML = '';
 
-    visibleData.forEach((item, index) => {
-      const itemEl = this.options.renderItem 
-        ? this.options.renderItem(item)
-        : this.createDefaultItem(item);
-      
-      itemEl.style.height = `${this.options.itemHeight}px`;
-      itemEl.style.boxSizing = 'border-box';
-      
-      if (this.options.onItemClick) {
-        itemEl.addEventListener('click', () => {
-          this.options.onItemClick!(item);
-        });
+    let hasData = false;
+    for (let i = this.startIndex; i < endIndex; i++) {
+      const item = this.data[i];
+      if (item) {
+        hasData = true;
+        const itemEl = this.options.renderItem 
+          ? this.options.renderItem(item)
+          : this.createDefaultItem(item);
+        
+        itemEl.style.height = `${this.options.itemHeight}px`;
+        itemEl.style.boxSizing = 'border-box';
+        
+        if (this.options.onItemClick) {
+          itemEl.addEventListener('click', () => {
+            this.options.onItemClick!(item);
+          });
+        }
+        
+        this.content.appendChild(itemEl);
+      } else {
+        const placeholder = document.createElement('div');
+        placeholder.style.height = `${this.options.itemHeight}px`;
+        placeholder.style.boxSizing = 'border-box';
+        placeholder.style.padding = '12px 16px';
+        placeholder.style.borderBottom = '1px solid #f0f0f0';
+        placeholder.style.background = 'linear-gradient(90deg, #f5f5f5 25%, #fafafa 50%, #f5f5f5 75%)';
+        placeholder.style.backgroundSize = '200% 100%';
+        placeholder.style.animation = 'shimmer 1.5s infinite';
+        this.content.appendChild(placeholder);
       }
-      
-      this.content.appendChild(itemEl);
-    });
+    }
 
-    if (visibleData.length === 0 && this.data.length === 0) {
+    if (!hasData && this.total === 0) {
+      this.content.innerHTML = '';
       const empty = document.createElement('div');
       empty.className = 'empty';
       empty.textContent = '暂无数据';

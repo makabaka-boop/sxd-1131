@@ -106,6 +106,13 @@ export const executorApi = {
     request<{ id: number }>('/executor/hazards', { method: 'POST', body: JSON.stringify(data) }),
   rectifyHazard: (id: number, data: { rectification_desc: string; rectification_photos?: string }) =>
     request<{ success: boolean }>(`/executor/hazards/${id}/rectify`, { method: 'PUT', body: JSON.stringify(data) }),
+  exportHazards: (params: FilterParams) => {
+    const query = new URLSearchParams();
+    Object.entries(params).forEach(([k, v]) => {
+      if (v !== undefined && v !== '') query.append(k, String(v));
+    });
+    return request<Blob>(`/executor/hazards/export?${query.toString()}`);
+  },
 };
 
 export const supervisorApi = {

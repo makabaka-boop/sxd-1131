@@ -2,12 +2,14 @@ import { supervisorApi, commonApi } from '../services/api';
 import { User, HazardRecord, FilterParams } from '../types';
 import { showToast, getStatusText, getStatusClass, formatDate, downloadBlob } from '../utils';
 import { VirtualList } from '../components/VirtualList';
-import { createHazardCascade, createHazardTypeCascade } from '../components/CascadeDropdown';
+import { createHazardCascade, createHazardTypeCascade, CascadeDropdown } from '../components/CascadeDropdown';
 
 export class SupervisorPage {
   private container: HTMLElement;
   private user: User;
   private virtualList!: VirtualList;
+  private locationCascade!: CascadeDropdown;
+  private hazardTypeCascade!: CascadeDropdown;
   private filterParams: FilterParams = {};
 
   constructor(container: HTMLElement) {
@@ -78,13 +80,13 @@ export class SupervisorPage {
   }
 
   private async initComponents() {
-    createHazardCascade(this.container.querySelector('#locationCascade')!, (values, labels) => {
+    this.locationCascade = createHazardCascade(this.container.querySelector('#locationCascade')!, (values, labels) => {
       this.filterParams.projectId = values.projectId;
       this.filterParams.floorId = values.floorId;
       this.filterParams.areaId = values.areaId;
     });
 
-    createHazardTypeCascade(this.container.querySelector('#hazardTypeCascade')!, (values, labels) => {
+    this.hazardTypeCascade = createHazardTypeCascade(this.container.querySelector('#hazardTypeCascade')!, (values, labels) => {
       this.filterParams.hazardTypeId = values.hazardTypeId;
     });
 
@@ -141,6 +143,8 @@ export class SupervisorPage {
       (this.container.querySelector('#status') as HTMLSelectElement).value = '';
       (this.container.querySelector('#groupId') as HTMLSelectElement).value = '';
       (this.container.querySelector('#keyword') as HTMLInputElement).value = '';
+      this.locationCascade.clear();
+      this.hazardTypeCascade.clear();
       this.virtualList.refresh();
     });
 

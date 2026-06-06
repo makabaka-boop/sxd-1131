@@ -2,12 +2,14 @@ import { executorApi, commonApi } from '../services/api';
 import { User, HazardRecord, FilterParams } from '../types';
 import { showToast, getStatusText, getStatusClass, formatDate, downloadBlob } from '../utils';
 import { VirtualList } from '../components/VirtualList';
-import { createHazardCascade, createHazardTypeCascade } from '../components/CascadeDropdown';
+import { createHazardCascade, createHazardTypeCascade, CascadeDropdown } from '../components/CascadeDropdown';
 
 export class ExecutorPage {
   private container: HTMLElement;
   private user: User;
   private virtualList!: VirtualList;
+  private locationCascade!: CascadeDropdown;
+  private hazardTypeCascade!: CascadeDropdown;
   private filterParams: FilterParams = {};
 
   constructor(container: HTMLElement) {
@@ -81,13 +83,13 @@ export class ExecutorPage {
   }
 
   private async initComponents() {
-    createHazardCascade(this.container.querySelector('#locationCascade')!, (values, labels) => {
+    this.locationCascade = createHazardCascade(this.container.querySelector('#locationCascade')!, (values, labels) => {
       this.filterParams.projectId = values.projectId;
       this.filterParams.floorId = values.floorId;
       this.filterParams.areaId = values.areaId;
     });
 
-    createHazardTypeCascade(this.container.querySelector('#hazardTypeCascade')!, (values, labels) => {
+    this.hazardTypeCascade = createHazardTypeCascade(this.container.querySelector('#hazardTypeCascade')!, (values, labels) => {
       this.filterParams.hazardTypeId = values.hazardTypeId;
     });
 
@@ -144,6 +146,8 @@ export class ExecutorPage {
       (this.container.querySelector('#status') as HTMLSelectElement).value = '';
       (this.container.querySelector('#groupId') as HTMLSelectElement).value = '';
       (this.container.querySelector('#keyword') as HTMLInputElement).value = '';
+      this.locationCascade.clear();
+      this.hazardTypeCascade.clear();
       this.virtualList.refresh();
     });
 
@@ -153,8 +157,8 @@ export class ExecutorPage {
 
     this.container.querySelector('#exportBtn')!.addEventListener('click', async () => {
       try {
-        const blob = await commonApi.exportHazards(this.filterParams);
-        downloadBlob(blob, `隐患记录_${new Date().toISOString().slice(0, 10)}.xlsx`);
+        const blob = await executorApi.exportHazards(this.filterParams);
+        downloadBlob(blob, `我的隐患记录_${new Date().toISOString().slice(0, 10)}.xlsx`);
         showToast('导出成功');
       } catch (err: any) {
         showToast(err.message || '导出失败', 'error');

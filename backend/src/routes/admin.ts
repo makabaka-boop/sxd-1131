@@ -152,8 +152,12 @@ router.get('/hazard-types', (req, res) => {
   let where = 'WHERE 1=1';
   const params: any[] = [];
   if (parentId !== undefined && parentId !== '') {
-    where += ' AND parent_id = ?';
-    params.push(parentId === 'null' ? null : parentId);
+    if (parentId === 'null' || parentId === null) {
+      where += ' AND parent_id IS NULL';
+    } else {
+      where += ' AND parent_id = ?';
+      params.push(Number(parentId));
+    }
   }
   if (keyword) {
     where += ' AND (name LIKE ? OR code LIKE ?)';

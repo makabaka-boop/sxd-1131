@@ -34,7 +34,7 @@ class Router {
         window.location.hash = `#/${user.role}`;
         break;
       case 'admin':
-        if (user.role !== 'admin' && user.role !== 'supervisor') {
+        if (user.role !== 'admin') {
           window.location.hash = `#/${user.role}`;
           return;
         }
